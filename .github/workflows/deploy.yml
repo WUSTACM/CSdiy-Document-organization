@@ -3,6 +3,7 @@ name: Deploy VitePress site to Pages
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,39 +16,54 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      
+
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          # 修正日志底部的警告：升级至 Node 22 以保持长期架构稳定
-          node-version: 22
-          
+          node-version: 24
+          cache: npm
+
       - name: Install dependencies
         run: npm ci
-        
+
       - name: Build with VitePress
         run: npm run docs:build
-        
+
+      - name: Check build output
+        run: |
+          test -d docs/.vitepress/dist
+          du -sh docs/.vitepress/dist
+          find docs/.vitepress/dist -maxdepth 2 -type f | head -50
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
-          # 【核心修复点】将寻址路径精确指向 docs 子目录下的 dist
           path: docs/.vitepress/dist
 
   deploy:
+    name: Deploy
+    runs-on: ubuntu-24.04
+    needs: build
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
-    name: Deploy
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        with:
+          timeout: 900000
+          error_count: 20
+          reporting_interval: 10000
